@@ -19,6 +19,14 @@ from heatmap_env import HeatmapEnv as selected_environment
 ENV_NAME = 'heatmap'
 
 env = selected_environment()
+# import time
+# for i in range(5000):
+# 	x, y = env.acf_dev.get_acf()
+# 	print(env.acf_sp.get_acf_env_fwhm(x, y))
+# 	# print(env.acf_sp.get_fwhm_test(x, y))
+# 	# print(env.get_shift())
+# 	time.sleep(0.2)
+# exit(0)
 nb_actions = env.action_space.n
 
 model = Sequential()
@@ -52,28 +60,52 @@ model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
 # model.add(Dense(16))
 # model.add(Activation('relu'))
 
+# # 100q on 16k, 14k, 15k, 13k, 19k, 13k, 19k, 19k, 14k
+# # Valid on 24k, 23k
+# model.add(Dense(96))
+# model.add(Activation('relu'))
+# model.add(Dense(64))
+# model.add(Activation('relu'))
+# model.add(Dense(64))
+# model.add(Activation('relu'))
+# model.add(Dense(32))
+# model.add(Activation('relu'))
+
+# # 100q on 16k, 14k, 15k, 13k, 19k, 13k, 19k, 19k, 14k
+# # Valid on 24k, 23k
+# model.add(Dense(128))
+# model.add(Activation('relu'))
+# model.add(Dense(96))
+# model.add(Activation('relu'))
+# model.add(Dense(64))
+# model.add(Activation('relu'))
+# model.add(Dense(32))
+# model.add(Activation('relu'))
+
 # 100q on 16k, 14k, 15k, 13k, 19k, 13k, 19k, 19k, 14k
 # Valid on 24k, 23k
+model.add(Dense(128))
+model.add(Activation('relu'))
+model.add(Dense(96))
+model.add(Activation('relu'))
 model.add(Dense(96))
 model.add(Activation('relu'))
 model.add(Dense(64))
-model.add(Activation('relu'))
-model.add(Dense(64))
-model.add(Activation('relu'))
-model.add(Dense(32))
 model.add(Activation('relu'))
 
 model.add(Dense(nb_actions))
 model.add(Activation('linear'))
 print(model.summary())
 
-nb_steps = 25000#23000#
-nb_max_episode_steps_06_05_20_49 = 150
-nb_max_episode_steps_06_06_16_24 = 100
-nb_max_episode_steps_06_06_16_07 = 200
-nb_max_episode_steps = nb_max_episode_steps_06_06_16_24
+nb_max_episode_steps = env.num_steps_per_episode
+env.steps_before_rendering = 0#55000#45000
+nb_steps = 60000#50000
 
-env.opt_reward = nb_max_episode_steps * 2
+# if_load = True
+if_load = False
+weights_name = 'dqn_weights_2018-07-02_20-03'
+if_learn = True
+# if_learn = False
 
 memory = SequentialMemory(limit=nb_steps, window_length=1)
 
@@ -82,7 +114,7 @@ policy_06_14_16_20 = BoltzmannGumbelQPolicy(C = 20.0) # 20, 50
 # more stable
 # 0.1 : 4k, 0.25 : 4-5k, 0.5 : 10k-inf
 policy_06_13_19_00 = BoltzmannQPolicy(tau = 1.0) # 0.5
-policy_06_14_16_15 = MaxBoltzmannQPolicy(eps = 0.1)
+policy_06_14_16_15 = MaxBoltzmannQPolicy(eps = 0.5)
 policy = policy_06_14_16_20
 
 target_model_update_06_05_20_49 = 1e-2
@@ -93,15 +125,10 @@ bactch_size_06_05_22_18 = 32
 bactch_size_07_05_16_07 = 64
 batch_size = bactch_size_06_05_22_18
 dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=10, 
-	# better
 	enable_dueling_network=True, dueling_type='avg',
 	# enable_double_dqn=True,
 	target_model_update=target_model_update, policy=policy,
 	batch_size = 32)
-
-# Dueling is 0.8 on 20_49 hp
-# Double is 0.2 on 20_49 hp
-# Dueling and Double is 0.1 on 20_49 hp
 
 lr_06_05_20_49 = 1e-3
 lr_06_05_22_18 = 1e-2
@@ -109,11 +136,19 @@ lr_06_13_19_07 = 5e-4
 lr = lr_06_05_20_49
 dqn.compile(Adam(lr=lr), metrics=['mae'])
 
-# dqn.load_weights('dqn_heatmap__weights.h5f')
+import datetime
+if if_learn:
+	if if_load:
+		dqn.load_weights('weights/' + weights_name + '.h5f')
+	try:
+		dqn.fit(env, nb_steps=nb_steps, visualize=True, verbose=2,
+	 		nb_max_episode_steps=nb_max_episode_steps)
+	except KeyboardInterrupt:
+		pass
+	dqn.save_weights('weights/dqn_weights_{}.h5f'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")), overwrite=True)
+else:
+	dqn.load_weights('weights/' + weights_name + '.h5f')	
+	env.steps_before_rendering = 0
 
-dqn.fit(env, nb_steps=nb_steps, visualize=False, verbose=2,
- nb_max_episode_steps=nb_max_episode_steps)
-
-dqn.save_weights('dqn_{}_weights.h5f'.format(ENV_NAME), overwrite=True)
 
 dqn.test(env, nb_episodes = 30, visualize=True, nb_max_episode_steps=nb_max_episode_steps)
